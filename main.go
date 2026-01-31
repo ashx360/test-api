@@ -10,6 +10,7 @@ import (
 	"test-api/repositories"
 	"test-api/services"
 
+	_ "github.com/lib/pq" // Add this line for PostgreSQL driver
 	"github.com/spf13/viper"
 )
 
@@ -19,6 +20,10 @@ type Config struct {
 }
 
 func main() {
+	viper.SetConfigFile(".env")
+	if err := viper.ReadInConfig(); err != nil {
+		log.Println("Warning: Could not read .env file, falling back to environment variables:", err)
+	}
 	config := Config{
 		Port:   viper.GetString("PORT"),
 		DBConn: viper.GetString("DB_CONN"),
