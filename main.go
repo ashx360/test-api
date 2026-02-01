@@ -48,5 +48,4 @@ func main() {
 
 	http.HandleFunc("/api/categories/", categoryHandler.HandleCategories)
 
-	http.ListenAndServe(":8080", nil)
 }

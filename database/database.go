@@ -12,7 +12,7 @@ func InitDB(connectionString string) (*sql.DB, error) {
 		return nil, fmt.Errorf("DATABASE_URL is empty")
 	}
 
-	// Force SSL for Railway
+	// Ensure SSL mode is set for Supabase
 	if !strings.Contains(connectionString, "sslmode=") {
 		if strings.Contains(connectionString, "?") {
 			connectionString += "&sslmode=require"

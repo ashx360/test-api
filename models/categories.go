@@ -5,5 +5,3 @@ type Category struct {
 	Nama        string `json:"nama"`
 	Description string `json:"description"`
 }
-
-var category = []Category{}
