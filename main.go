@@ -21,9 +21,8 @@ type Config struct {
 
 func main() {
 	viper.SetConfigFile(".env")
-	if err := viper.ReadInConfig(); err != nil {
-		log.Println("Warning: Could not read .env file, falling back to environment variables:", err)
-	}
+	_ = viper.ReadInConfig()
+	viper.AutomaticEnv()
 	config := Config{
 		Port:   viper.GetString("PORT"),
 		DBConn: viper.GetString("DB_CONN"),

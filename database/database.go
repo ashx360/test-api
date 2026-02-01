@@ -2,24 +2,35 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"strings"
 )
 
 func InitDB(connectionString string) (*sql.DB, error) {
-	// Open database
+	if connectionString == "" {
+		return nil, fmt.Errorf("DATABASE_URL is empty")
+	}
+
+	// Force SSL for Railway
+	if !strings.Contains(connectionString, "sslmode=") {
+		if strings.Contains(connectionString, "?") {
+			connectionString += "&sslmode=require"
+		} else {
+			connectionString += "?sslmode=require"
+		}
+	}
+
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return nil, err
 	}
 
-	// Test connection
-	err = db.Ping()
-	if err != nil {
+	if err := db.Ping(); err != nil {
 		return nil, err
 	}
 
-	// Set connection pool settings (optional tapi recommended)
-	db.SetMaxOpenConns(25)
+	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 
 	log.Println("Database connected successfully")
