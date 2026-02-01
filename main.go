@@ -59,4 +59,7 @@ func main() {
 	})
 	http.HandleFunc("/api/categories/", categoryHandler.HandleCategories)
 
+	// Start the HTTP server
+	log.Printf("Server starting on port %s", config.Port)
+	log.Fatal(http.ListenAndServe(":"+config.Port, nil))
 }
