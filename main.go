@@ -21,11 +21,23 @@ type Config struct {
 
 func main() {
 	viper.SetConfigFile(".env")
-	_ = viper.ReadInConfig()
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Warning: Could not read .env file: %v", err)
+	}
 	viper.AutomaticEnv()
+
 	config := Config{
 		Port:   viper.GetString("PORT"),
 		DBConn: viper.GetString("DB_CONN"),
+	}
+
+	// Debug: Print config values
+	log.Printf("Port: %s", config.Port)
+	log.Printf("DBConn: %s", config.DBConn)
+
+	if config.DBConn == "" {
+		log.Fatal("DB_CONN environment variable is not set")
 	}
 
 	db, err := database.InitDB(config.DBConn)
@@ -45,7 +57,6 @@ func main() {
 			"message": "API Running",
 		})
 	})
-
 	http.HandleFunc("/api/categories/", categoryHandler.HandleCategories)
 
 }

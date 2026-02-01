@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +16,22 @@ type CategoryHandler struct {
 
 func NewCategoryHandler(service *services.CategoryService) *CategoryHandler {
 	return &CategoryHandler{service: service}
+}
+
+func (h *CategoryHandler) extractID(r *http.Request) (int, error) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/categories/")
+	path = strings.Trim(path, "/")
+
+	if path == "" {
+		return 0, fmt.Errorf("no ID provided")
+	}
+
+	id, err := strconv.Atoi(path)
+	if err != nil {
+		return 0, fmt.Errorf("invalid ID format")
+	}
+
+	return id, nil
 }
 
 func (h *CategoryHandler) HandleCategories(w http.ResponseWriter, r *http.Request) {
@@ -39,23 +56,20 @@ func (h *CategoryHandler) HandleCategories(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *CategoryHandler) getCategory(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	idStr = strings.Trim(idStr, "/")
-
-	if idStr == "" {
-		categories, err := h.service.GetAll()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+	id, err := h.extractID(r)
+	if err != nil {
+		// If no ID provided, get all categories
+		if err.Error() == "no ID provided" {
+			categories, err := h.service.GetAll()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(categories)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(categories)
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -88,11 +102,9 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	idStr = strings.Trim(idStr, "/")
-	id, err := strconv.Atoi(idStr)
+	id, err := h.extractID(r)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -115,11 +127,9 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CategoryHandler) delete(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	idStr = strings.Trim(idStr, "/")
-	id, err := strconv.Atoi(idStr)
+	id, err := h.extractID(r)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
