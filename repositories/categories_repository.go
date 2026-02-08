@@ -3,6 +3,7 @@ package repositories
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"test-api/models"
 )
 
@@ -91,5 +92,182 @@ func (repo *CategoryRepository) Delete(id int) error {
 		return errors.New("kategori tidak ditemukan")
 	}
 
-	return err
+	return nil
+}
+
+//////////////////////// Transaction Repository //////////////////////
+
+type TransactionRepository struct {
+	db *sql.DB
+}
+
+func NewTransactionRepository(db *sql.DB) *TransactionRepository {
+	return &TransactionRepository{db: db}
+}
+
+func (repo *TransactionRepository) CreateTransaction(items []models.CheckoutItem) (*models.Transaction, error) {
+	tx, err := repo.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	totalAmount := 0
+	details := make([]models.TransactionDetail, 0)
+
+	for _, item := range items {
+		var productPrice, stock int
+		var productName string
+
+		err := tx.QueryRow("SELECT name, price, stock FROM products WHERE id = $1", item.ProductID).Scan(&productName, &productPrice, &stock)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("product id %d not found", item.ProductID)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		subtotal := productPrice * item.Quantity
+		totalAmount += subtotal
+
+		_, err = tx.Exec("UPDATE products SET stock = stock - $1 WHERE id = $2", item.Quantity, item.ProductID)
+		if err != nil {
+			return nil, err
+		}
+
+		details = append(details, models.TransactionDetail{
+			ProductID:   item.ProductID,
+			ProductName: productName,
+			Quantity:    item.Quantity,
+			Subtotal:    subtotal,
+		})
+	}
+
+	var transactionID int
+	err = tx.QueryRow("INSERT INTO transactions (total_amount) VALUES ($1) RETURNING id", totalAmount).Scan(&transactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range details {
+		details[i].TransactionID = transactionID
+
+		// Capture the auto-generated ID if your table has one
+		var detailID int
+		if err := tx.QueryRow(
+			"INSERT INTO transaction_details (transaction_id, product_id, quantity, subtotal) VALUES ($1, $2, $3, $4) RETURNING id",
+			transactionID, details[i].ProductID, details[i].Quantity, details[i].Subtotal,
+		).Scan(&detailID); err != nil {
+			return nil, err
+		}
+
+		details[i].ID = detailID
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &models.Transaction{
+		ID:          transactionID,
+		TotalAmount: totalAmount,
+		Details:     details,
+	}, nil
+}
+
+type ReportRepository struct {
+	db *sql.DB
+}
+
+func NewReportRepository(db *sql.DB) *ReportRepository {
+	return &ReportRepository{db: db}
+}
+
+func (r *ReportRepository) FetchReportToday() (map[string]interface{}, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(total_amount),0) AS total_revenue,
+			COUNT(*) AS total_transaksi
+		FROM transactions
+		WHERE DATE(created_at) = CURRENT_DATE
+	`
+
+	var totalRevenue, totalTransaksi int
+	if err := r.db.QueryRow(query).Scan(&totalRevenue, &totalTransaksi); err != nil {
+		return nil, err
+	}
+
+	// Get best-selling product today
+	var productName string
+	var qtyTerjual int
+	err := r.db.QueryRow(`
+		SELECT p.name, SUM(td.quantity) AS qty_terjual
+		FROM transaction_details td
+		JOIN products p ON td.product_id = p.id
+		JOIN transactions t ON td.transaction_id = t.id
+		WHERE DATE(t.created_at) = CURRENT_DATE
+		GROUP BY p.name
+		ORDER BY qty_terjual DESC
+		LIMIT 1
+	`).Scan(&productName, &qtyTerjual)
+
+	if err == sql.ErrNoRows {
+		productName = ""
+		qtyTerjual = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"total_revenue":   totalRevenue,
+		"total_transaksi": totalTransaksi,
+		"produk_terlaris": map[string]interface{}{
+			"nama":        productName,
+			"qty_terjual": qtyTerjual,
+		},
+	}, nil
+}
+
+func (r *ReportRepository) FetchReportByRange(startDate, endDate string) (map[string]interface{}, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(total_amount),0) AS total_revenue,
+			COUNT(*) AS total_transaksi
+		FROM transactions
+		WHERE DATE(created_at) BETWEEN $1 AND $2
+	`
+
+	var totalRevenue, totalTransaksi int
+	if err := r.db.QueryRow(query, startDate, endDate).Scan(&totalRevenue, &totalTransaksi); err != nil {
+		return nil, err
+	}
+
+	var productName string
+	var qtyTerjual int
+	err := r.db.QueryRow(`
+		SELECT p.name, SUM(td.quantity) AS qty_terjual
+		FROM transaction_details td
+		JOIN products p ON td.product_id = p.id
+		JOIN transactions t ON td.transaction_id = t.id
+		WHERE DATE(t.created_at) BETWEEN $1 AND $2
+		GROUP BY p.name
+		ORDER BY qty_terjual DESC
+		LIMIT 1
+	`, startDate, endDate).Scan(&productName, &qtyTerjual)
+
+	if err == sql.ErrNoRows {
+		productName = ""
+		qtyTerjual = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"total_revenue":   totalRevenue,
+		"total_transaksi": totalTransaksi,
+		"produk_terlaris": map[string]interface{}{
+			"nama":        productName,
+			"qty_terjual": qtyTerjual,
+		},
+	}, nil
 }

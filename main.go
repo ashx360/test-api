@@ -20,11 +20,7 @@ type Config struct {
 }
 
 func main() {
-	viper.SetConfigFile(".env")
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Printf("Warning: Could not read .env file: %v", err)
-	}
+
 	viper.AutomaticEnv()
 
 	config := Config{
@@ -62,4 +58,11 @@ func main() {
 	// Start the HTTP server
 	log.Printf("Server starting on port %s", config.Port)
 	log.Fatal(http.ListenAndServe(":"+config.Port, nil))
+
+	// Transaction
+	transactionRepo := repositories.NewTransactionRepository(db)
+	transactionService := services.NewTransactionService(transactionRepo)
+	transactionHandler := handlers.NewTransactionHandler(transactionService)
+
+	http.HandleFunc("/api/checkout", transactionHandler.HandleCheckout) // POST
 }

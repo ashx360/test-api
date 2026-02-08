@@ -10,6 +10,48 @@ import (
 	"test-api/services"
 )
 
+/////////////////////////// Transaction handlers ///////////////////////////
+
+type TransactionHandler struct {
+	service *services.TransactionService
+}
+
+func NewTransactionHandler(service *services.TransactionService) *TransactionHandler {
+	return &TransactionHandler{service: service}
+}
+
+// HandleCheckout routes requests for checkout
+func (h *TransactionHandler) HandleCheckout(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		h.Checkout(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
+	var req models.CheckoutRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Pass the required second argument here
+	transaction, err := h.service.Checkout(req.Items, true) // or false depending on your logic
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(transaction); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+/////////////////////////// Category handlers ///////////////////////////
+
 type CategoryHandler struct {
 	service *services.CategoryService
 }
@@ -19,7 +61,7 @@ func NewCategoryHandler(service *services.CategoryService) *CategoryHandler {
 }
 
 func (h *CategoryHandler) extractID(r *http.Request) (int, error) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/categories/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/categories")
 	path = strings.Trim(path, "/")
 
 	if path == "" {
@@ -35,30 +77,23 @@ func (h *CategoryHandler) extractID(r *http.Request) (int, error) {
 }
 
 func (h *CategoryHandler) HandleCategories(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		h.getCategory(w, r)
-		return
-	}
-	if r.Method == http.MethodPut {
-		h.update(w, r)
-		return
-	}
-	if r.Method == http.MethodDelete {
-		h.delete(w, r)
-		return
-	}
-	if r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodGet:
+		h.getAll(w, r)
+	case http.MethodPost:
 		h.create(w, r)
-		return
+	case http.MethodPut:
+		h.update(w, r)
+	case http.MethodDelete:
+		h.delete(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
-func (h *CategoryHandler) getCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) getAll(w http.ResponseWriter, r *http.Request) {
 	id, err := h.extractID(r)
 	if err != nil {
-		// If no ID provided, get all categories
 		if err.Error() == "no ID provided" {
 			categories, err := h.service.GetAll()
 			if err != nil {
@@ -66,7 +101,9 @@ func (h *CategoryHandler) getCategory(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(categories)
+			if err := json.NewEncoder(w).Encode(categories); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -80,7 +117,9 @@ func (h *CategoryHandler) getCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(category)
+	if err := json.NewEncoder(w).Encode(category); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -90,15 +129,16 @@ func (h *CategoryHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.Create(&newCategory)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := h.service.Create(&newCategory); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(newCategory)
+	if err := json.NewEncoder(w).Encode(newCategory); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
@@ -109,21 +149,21 @@ func (h *CategoryHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updateCategory models.Category
-	err = json.NewDecoder(r.Body).Decode(&updateCategory)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&updateCategory); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
 	updateCategory.ID = id
-	err = h.service.Update(&updateCategory)
-	if err != nil {
+	if err := h.service.Update(&updateCategory); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updateCategory)
+	if err := json.NewEncoder(w).Encode(updateCategory); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (h *CategoryHandler) delete(w http.ResponseWriter, r *http.Request) {
@@ -133,14 +173,15 @@ func (h *CategoryHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.Delete(id)
-	if err != nil {
+	if err := h.service.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"message": "Delete berhasil",
-	})
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
